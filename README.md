@@ -49,7 +49,7 @@ Unused npm Dependencies
 ### From source (requires Rust 1.88+)
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/deadcheck
+git clone https://github.com/starc007/deadcheck
 cd deadcheck
 cargo install --path .
 ```

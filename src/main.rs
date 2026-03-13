@@ -55,13 +55,8 @@ pub fn run_analysis(root: &std::path::Path, args: &CliArgs) -> Result<()> {
     // ------------------------------------------------------------------
     // Load configuration (package.json, tsconfig.json, deadcheck.config.json)
     // ------------------------------------------------------------------
-    let cfg = config::load(
-        root,
-        &args.entry,
-        &args.ignore,
-        args.config.as_deref(),
-    )
-    .context("Failed to load project configuration")?;
+    let cfg = config::load(root, &args.entry, &args.ignore, args.config.as_deref())
+        .context("Failed to load project configuration")?;
 
     // ------------------------------------------------------------------
     // Phase 1: Scan
@@ -74,7 +69,10 @@ pub fn run_analysis(root: &std::path::Path, args: &CliArgs) -> Result<()> {
     scan_spinner.finish_and_clear();
 
     if files.is_empty() {
-        eprintln!("No JavaScript or TypeScript files found in {}", root.display());
+        eprintln!(
+            "No JavaScript or TypeScript files found in {}",
+            root.display()
+        );
         return Ok(());
     }
 
@@ -83,16 +81,15 @@ pub fn run_analysis(root: &std::path::Path, args: &CliArgs) -> Result<()> {
     // ------------------------------------------------------------------
     let parse_bar = progress_bar(files.len() as u64, "Parsing {pos}/{len} files...");
 
-    let file_infos = parser::parse_all(root, &files, &parse_bar)
-        .context("Parsing phase failed")?;
+    let file_infos = parser::parse_all(root, &files, &parse_bar).context("Parsing phase failed")?;
 
     parse_bar.finish_and_clear();
 
     // ------------------------------------------------------------------
     // Phase 3: Build dependency graph
     // ------------------------------------------------------------------
-    let dep_graph = graph::build(root, file_infos, &cfg)
-        .context("Failed to build dependency graph")?;
+    let dep_graph =
+        graph::build(root, file_infos, &cfg).context("Failed to build dependency graph")?;
 
     // ------------------------------------------------------------------
     // Phase 4: Analyze
@@ -116,8 +113,7 @@ pub fn run_analysis(root: &std::path::Path, args: &CliArgs) -> Result<()> {
     // Phase 6: Safe delete (--fix)
     // ------------------------------------------------------------------
     if args.fix {
-        fix::apply(root, &result, args.min_confidence)
-            .context("Safe-delete operation failed")?;
+        fix::apply(root, &result, args.min_confidence).context("Safe-delete operation failed")?;
     }
 
     Ok(())

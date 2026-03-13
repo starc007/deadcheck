@@ -49,8 +49,8 @@ pub fn scan(root: &Path, extra_ignore: &[String]) -> Result<Vec<PathBuf>> {
     // them inside the single `filter_entry` closure.
     let mut glob_builder = GlobSetBuilder::new();
     for pattern in extra_ignore {
-        let glob = Glob::new(pattern)
-            .with_context(|| format!("Invalid ignore pattern: {pattern}"))?;
+        let glob =
+            Glob::new(pattern).with_context(|| format!("Invalid ignore pattern: {pattern}"))?;
         glob_builder.add(glob);
     }
     let extra_globs = glob_builder

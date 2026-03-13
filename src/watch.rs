@@ -60,7 +60,8 @@ pub fn run(root: &Path, args: &CliArgs) -> Result<()> {
             Ok(events) => {
                 // Only re-run if at least one changed file is a JS/TS source file.
                 let relevant = events.iter().any(|e| {
-                    e.path.extension()
+                    e.path
+                        .extension()
                         .and_then(|ext| ext.to_str())
                         .map(|ext| WATCHED_EXTENSIONS.contains(&ext))
                         .unwrap_or(false)

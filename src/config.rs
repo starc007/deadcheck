@@ -179,11 +179,7 @@ fn load_package_json(root: &Path, cfg: &mut ProjectConfig) {
 
 /// Infer the framework from the dependency names.
 fn detect_framework(deps: &HashSet<String>, dev: &HashSet<String>) -> Framework {
-    let all: HashSet<&str> = deps
-        .iter()
-        .chain(dev.iter())
-        .map(String::as_str)
-        .collect();
+    let all: HashSet<&str> = deps.iter().chain(dev.iter()).map(String::as_str).collect();
 
     if all.contains("next") {
         Framework::NextJs

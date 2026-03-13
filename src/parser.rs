@@ -68,10 +68,8 @@ fn parse_file(root: &Path, path: &Path) -> Result<FileInfo> {
 
     // Each thread creates its own SourceMap — SWC's SourceMap is not Send.
     let source_map = Lrc::new(SourceMap::default());
-    let source_file = source_map.new_source_file(
-        Lrc::new(FileName::Real(path.to_path_buf())),
-        source.clone(),
-    );
+    let source_file =
+        source_map.new_source_file(Lrc::new(FileName::Real(path.to_path_buf())), source.clone());
 
     // Use TypeScript syntax with JSX enabled — this handles .ts, .tsx, .js, .jsx.
     let syntax = Syntax::Typescript(TsSyntax {
@@ -80,7 +78,12 @@ fn parse_file(root: &Path, path: &Path) -> Result<FileInfo> {
         ..Default::default()
     });
 
-    let lexer = Lexer::new(syntax, EsVersion::EsNext, StringInput::from(&*source_file), None);
+    let lexer = Lexer::new(
+        syntax,
+        EsVersion::EsNext,
+        StringInput::from(&*source_file),
+        None,
+    );
     let mut swc_parser = Parser::new_from(lexer);
 
     // `parse_module` returns a `Result` with SWC's own error type. Convert it
@@ -95,10 +98,7 @@ fn parse_file(root: &Path, path: &Path) -> Result<FileInfo> {
         module.visit_with(&mut visitor);
     });
 
-    let relative_path = path
-        .strip_prefix(root)
-        .unwrap_or(path)
-        .to_path_buf();
+    let relative_path = path.strip_prefix(root).unwrap_or(path).to_path_buf();
 
     Ok(FileInfo {
         path: path.to_path_buf(),
@@ -249,7 +249,8 @@ impl Visit for ImportExportVisitor {
             if let Some(first_arg) = node.args.first() {
                 // Only record statically-known string specifiers.
                 if let Expr::Lit(Lit::Str(s)) = first_arg.expr.as_ref() {
-                    self.dynamic_imports.push(s.value.to_string_lossy().into_owned());
+                    self.dynamic_imports
+                        .push(s.value.to_string_lossy().into_owned());
                 } else {
                     // Template literal or variable — not resolvable statically.
                     self.dynamic_imports.push("<dynamic>".to_string());
@@ -271,11 +272,7 @@ fn exported_names_from_decl(decl: &Decl) -> Vec<String> {
     match decl {
         Decl::Fn(f) => vec![f.ident.sym.to_string()],
         Decl::Class(c) => vec![c.ident.sym.to_string()],
-        Decl::Var(v) => v
-            .decls
-            .iter()
-            .flat_map(|d| pat_to_names(&d.name))
-            .collect(),
+        Decl::Var(v) => v.decls.iter().flat_map(|d| pat_to_names(&d.name)).collect(),
         Decl::TsInterface(i) => vec![i.id.sym.to_string()],
         Decl::TsTypeAlias(t) => vec![t.id.sym.to_string()],
         Decl::TsEnum(e) => vec![e.id.sym.to_string()],
@@ -283,11 +280,7 @@ fn exported_names_from_decl(decl: &Decl) -> Vec<String> {
             TsModuleName::Ident(id) => vec![id.sym.to_string()],
             TsModuleName::Str(s) => vec![s.value.to_string_lossy().into_owned()],
         },
-        Decl::Using(u) => u
-            .decls
-            .iter()
-            .flat_map(|d| pat_to_names(&d.name))
-            .collect(),
+        Decl::Using(u) => u.decls.iter().flat_map(|d| pat_to_names(&d.name)).collect(),
     }
 }
 
@@ -295,12 +288,7 @@ fn exported_names_from_decl(decl: &Decl) -> Vec<String> {
 fn pat_to_names(pat: &Pat) -> Vec<String> {
     match pat {
         Pat::Ident(id) => vec![id.id.sym.to_string()],
-        Pat::Array(arr) => arr
-            .elems
-            .iter()
-            .flatten()
-            .flat_map(pat_to_names)
-            .collect(),
+        Pat::Array(arr) => arr.elems.iter().flatten().flat_map(pat_to_names).collect(),
         Pat::Object(obj) => obj
             .props
             .iter()

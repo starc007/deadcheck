@@ -152,7 +152,8 @@ fn bullet() -> colored::ColoredString {
 
 /// Serialise the analysis result as pretty-printed JSON to stdout.
 pub fn print_json(result: &AnalysisResult) -> Result<()> {
-    let json = serde_json::to_string_pretty(result).context("Failed to serialise result as JSON")?;
+    let json =
+        serde_json::to_string_pretty(result).context("Failed to serialise result as JSON")?;
     println!("{json}");
     Ok(())
 }
@@ -195,4 +196,3 @@ fn filter_to_confidence(filter: ConfidenceFilter) -> Confidence {
         ConfidenceFilter::Low => Confidence::Low,
     }
 }
-

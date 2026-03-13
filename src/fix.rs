@@ -87,8 +87,7 @@ pub fn apply(root: &Path, result: &AnalysisResult, min_confidence: ConfidenceFil
     }
 
     // Create the .deadcode/ directory if it doesn't exist.
-    fs::create_dir_all(&deadcode_dir)
-        .context("Failed to create .deadcode/ directory")?;
+    fs::create_dir_all(&deadcode_dir).context("Failed to create .deadcode/ directory")?;
 
     let mut entries: Vec<ManifestEntry> = Vec::new();
 
@@ -108,10 +107,13 @@ pub fn apply(root: &Path, result: &AnalysisResult, min_confidence: ConfidenceFil
                 .with_context(|| format!("Cannot create {}", parent.display()))?;
         }
 
-        fs::rename(&source, &destination)
-            .with_context(|| {
-                format!("Cannot move {} → {}", source.display(), destination.display())
-            })?;
+        fs::rename(&source, &destination).with_context(|| {
+            format!(
+                "Cannot move {} → {}",
+                source.display(),
+                destination.display()
+            )
+        })?;
 
         let moved_to = destination
             .strip_prefix(root)
@@ -160,8 +162,7 @@ fn write_manifest(deadcode_dir: &Path, entries: Vec<ManifestEntry>) -> Result<()
         entries,
     };
 
-    let json = serde_json::to_string_pretty(&manifest)
-        .context("Failed to serialise manifest")?;
+    let json = serde_json::to_string_pretty(&manifest).context("Failed to serialise manifest")?;
 
     let manifest_path = deadcode_dir.join("manifest.json");
     fs::write(&manifest_path, json)

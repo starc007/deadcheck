@@ -126,7 +126,11 @@ fn expand_alias(specifier: &str, aliases: &[(String, Vec<PathBuf>)]) -> Option<P
                 // Replace the trailing `*` in the root pattern with `rest`.
                 let root_str = root.to_string_lossy();
                 let expanded = if root_str.ends_with('*') {
-                    PathBuf::from(format!("{}{}", &root_str[..root_str.len() - 1], rest))
+                    PathBuf::from(format!(
+                        "{}{}",
+                        root_str.strip_suffix('*').unwrap_or(&root_str),
+                        rest
+                    ))
                 } else if rest.is_empty() {
                     root.clone()
                 } else {
@@ -150,7 +154,7 @@ fn expand_alias(specifier: &str, aliases: &[(String, Vec<PathBuf>)]) -> Option<P
 /// an exact string.
 fn match_alias_prefix<'a>(specifier: &'a str, prefix: &str) -> Option<&'a str> {
     if prefix.ends_with('*') {
-        let base = &prefix[..prefix.len() - 1];
+        let base = prefix.strip_suffix('*').unwrap_or(prefix);
         specifier.strip_prefix(base)
     } else if specifier == prefix {
         Some("")
@@ -180,11 +184,7 @@ fn npm_package_name(specifier: &str) -> String {
         }
     } else {
         // Unscoped package: keep only the first segment.
-        specifier
-            .split('/')
-            .next()
-            .unwrap_or(specifier)
-            .to_string()
+        specifier.split('/').next().unwrap_or(specifier).to_string()
     }
 }
 

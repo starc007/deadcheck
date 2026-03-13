@@ -106,12 +106,8 @@ fn collect_dead_files(graph: &DependencyGraph, reachable: &HashSet<FileId>) -> V
                 .edges_directed(id, Direction::Incoming)
                 .any(|e| *e.weight() == crate::graph::EdgeKind::Dynamic);
 
-            let (confidence, signals) = confidence::score(
-                file,
-                graph,
-                incoming_count,
-                has_dynamic_import_incoming,
-            );
+            let (confidence, signals) =
+                confidence::score(file, graph, incoming_count, has_dynamic_import_incoming);
 
             Some(DeadFile {
                 path: file.relative_path.display().to_string(),
@@ -122,11 +118,7 @@ fn collect_dead_files(graph: &DependencyGraph, reachable: &HashSet<FileId>) -> V
         .collect();
 
     // Sort: highest confidence first, then alphabetically.
-    dead.sort_unstable_by(|a, b| {
-        b.confidence
-            .cmp(&a.confidence)
-            .then(a.path.cmp(&b.path))
-    });
+    dead.sort_unstable_by(|a, b| b.confidence.cmp(&a.confidence).then(a.path.cmp(&b.path)));
 
     dead
 }
@@ -185,13 +177,12 @@ fn collect_unused_exports(
 }
 
 /// Returns `true` if any file imports `symbol_name` from `target_file_id`.
-fn is_symbol_imported(
-    graph: &DependencyGraph,
-    target_file_id: FileId,
-    symbol_name: &str,
-) -> bool {
+fn is_symbol_imported(graph: &DependencyGraph, target_file_id: FileId, symbol_name: &str) -> bool {
     // Walk all incoming edges to find files that import from `target_file_id`.
-    for importer_id in graph.graph.neighbors_directed(target_file_id, Direction::Incoming) {
+    for importer_id in graph
+        .graph
+        .neighbors_directed(target_file_id, Direction::Incoming)
+    {
         let Some(importer_file) = graph.files.get(importer_id.index()) else {
             continue;
         };
@@ -248,11 +239,7 @@ fn collect_unused_dependencies(graph: &DependencyGraph, cfg: &ProjectConfig) -> 
     }
 
     // Collect all external package names seen in any import across the project.
-    let seen: HashSet<&str> = graph
-        .external_packages
-        .iter()
-        .map(String::as_str)
-        .collect();
+    let seen: HashSet<&str> = graph.external_packages.iter().map(String::as_str).collect();
 
     let mut unused: Vec<String> = checked
         .into_iter()

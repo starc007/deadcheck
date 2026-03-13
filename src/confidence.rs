@@ -160,7 +160,13 @@ fn matches_route_pattern(path: &str) -> bool {
 
     // Next.js App Router special files.
     let app_route_stems = [
-        "page", "layout", "route", "loading", "error", "not-found", "template",
+        "page",
+        "layout",
+        "route",
+        "loading",
+        "error",
+        "not-found",
+        "template",
     ];
     if path_lower.contains("/app/") || path_lower.starts_with("app/") {
         for stem in &app_route_stems {

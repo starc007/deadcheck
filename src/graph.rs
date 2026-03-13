@@ -133,9 +133,7 @@ pub fn build(root: &Path, files: Vec<FileInfo>, cfg: &ProjectConfig) -> Result<D
 
     // Add any paths from config / --entry CLI flags.
     for extra in &cfg.extra_entry_points {
-        let canonical = extra
-            .canonicalize()
-            .unwrap_or_else(|_| extra.clone());
+        let canonical = extra.canonicalize().unwrap_or_else(|_| extra.clone());
         if let Some(&id) = file_map.get(&canonical) {
             if !entry_points.contains(&id) {
                 entry_points.push(id);
@@ -244,9 +242,7 @@ fn matches_root_entry(relative_path: &Path, file_name: &str) -> bool {
 
 /// Next.js App Router: `page.tsx`, `layout.tsx`, `route.ts`, etc. inside `app/`.
 fn is_nextjs_app_route(relative_path: &Path, file_name: &str) -> bool {
-    let in_app_dir = relative_path
-        .components()
-        .any(|c| c.as_os_str() == "app");
+    let in_app_dir = relative_path.components().any(|c| c.as_os_str() == "app");
 
     if !in_app_dir {
         return false;
@@ -291,16 +287,20 @@ fn is_remix_route(relative_path: &Path) -> bool {
         .next()
         .map(|c| c.as_os_str().to_string_lossy().into_owned());
 
-    matches!((first.as_deref(), second.as_deref()), (Some("app"), Some("routes")))
+    matches!(
+        (first.as_deref(), second.as_deref()),
+        (Some("app"), Some("routes"))
+    )
 }
 
 /// Config files at the project root (vite.config.ts, next.config.mjs, etc.).
 fn is_root_config(root: &Path, relative_path: &Path, file_name: &str) -> bool {
     // Only look at files directly in the project root.
-    if relative_path.parent() != Some(Path::new("")) && relative_path.parent() != Some(root) {
-        if relative_path.components().count() != 1 {
-            return false;
-        }
+    if relative_path.parent() != Some(Path::new(""))
+        && relative_path.parent() != Some(root)
+        && relative_path.components().count() != 1
+    {
+        return false;
     }
 
     matches!(

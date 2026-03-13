@@ -89,7 +89,9 @@ fn simple_detects_unused_dependency() {
     let result = run_fixture("simple");
 
     assert!(
-        result.unused_dependencies.contains(&"unused-package".to_string()),
+        result
+            .unused_dependencies
+            .contains(&"unused-package".to_string()),
         "expected unused-package to be flagged, got: {:?}",
         result.unused_dependencies
     );
@@ -102,7 +104,9 @@ fn simple_flags_all_unused_dependencies() {
     let result = run_fixture("simple");
 
     assert!(
-        result.unused_dependencies.contains(&"unused-package".to_string()),
+        result
+            .unused_dependencies
+            .contains(&"unused-package".to_string()),
         "unused-package should be flagged: {:?}",
         result.unused_dependencies
     );

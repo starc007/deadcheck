@@ -44,7 +44,9 @@ pub fn print_terminal(result: &AnalysisResult, min_confidence: ConfidenceFilter)
         println!("\n{}", "Dead Files".bold().underline());
 
         for group_confidence in [Confidence::High, Confidence::Medium, Confidence::Low] {
-            if confidence_to_filter(group_confidence) < min_confidence {
+            // Skip groups below the minimum threshold.
+            // Confidence ordering: Low < Medium < High.
+            if group_confidence < min {
                 continue;
             }
 
@@ -194,10 +196,3 @@ fn filter_to_confidence(filter: ConfidenceFilter) -> Confidence {
     }
 }
 
-fn confidence_to_filter(c: Confidence) -> ConfidenceFilter {
-    match c {
-        Confidence::High => ConfidenceFilter::High,
-        Confidence::Medium => ConfidenceFilter::Medium,
-        Confidence::Low => ConfidenceFilter::Low,
-    }
-}

@@ -3,25 +3,28 @@
 //! # Pipeline
 //!
 //! ```text
-//! CLI args
+//! CLI args + config files
 //!   └─► scanner   — find all JS/TS files in the project
 //!         └─► parser    — extract imports & exports from each file (parallel)
-//!               └─► resolver  — turn specifiers into absolute paths
-//!                     └─► graph     — build a directed dependency graph
-//!                           └─► analyzer  — BFS reachability from entry points
-//!                                 └─► confidence — score each dead file
-//!                                       └─► output — display results
+//!               └─► graph     — build a directed dependency graph
+//!                     └─► analyzer  — BFS reachability from entry points
+//!                           └─► confidence — score each dead file
+//!                                 └─► output — display / JSON / DOT
+//!                                       └─► fix (optional) — safe-delete
 //! ```
 
 mod analyzer;
 mod cli;
 mod confidence;
+mod config;
+mod fix;
 mod graph;
 mod output;
 mod parser;
 mod resolver;
 mod scanner;
 mod types;
+mod watch;
 
 use anyhow::{Context, Result};
 use clap::Parser as _;
@@ -32,19 +35,40 @@ use cli::CliArgs;
 fn main() -> Result<()> {
     let args = CliArgs::parse();
 
-    // Resolve the project root to an absolute path so every downstream
-    // module can work with canonical paths.
     let root = args
         .path
         .canonicalize()
         .with_context(|| format!("Cannot access directory: {}", args.path.display()))?;
+
+    if args.watch {
+        // Watch mode runs its own loop; it never returns unless there is an error.
+        return watch::run(&root, &args);
+    }
+
+    run_analysis(&root, &args)
+}
+
+/// Run one complete analysis pass and produce output.
+///
+/// This is extracted so the watch loop can call it on every change.
+pub fn run_analysis(root: &std::path::Path, args: &CliArgs) -> Result<()> {
+    // ------------------------------------------------------------------
+    // Load configuration (package.json, tsconfig.json, deadcheck.config.json)
+    // ------------------------------------------------------------------
+    let cfg = config::load(
+        root,
+        &args.entry,
+        &args.ignore,
+        args.config.as_deref(),
+    )
+    .context("Failed to load project configuration")?;
 
     // ------------------------------------------------------------------
     // Phase 1: Scan
     // ------------------------------------------------------------------
     let scan_spinner = spinner("Scanning files...");
 
-    let files = scanner::scan(&root, &args.ignore)
+    let files = scanner::scan(root, &cfg.ignore_patterns)
         .with_context(|| format!("Failed to scan project at {}", root.display()))?;
 
     scan_spinner.finish_and_clear();
@@ -59,7 +83,7 @@ fn main() -> Result<()> {
     // ------------------------------------------------------------------
     let parse_bar = progress_bar(files.len() as u64, "Parsing {pos}/{len} files...");
 
-    let file_infos = parser::parse_all(&root, &files, &parse_bar)
+    let file_infos = parser::parse_all(root, &files, &parse_bar)
         .context("Parsing phase failed")?;
 
     parse_bar.finish_and_clear();
@@ -67,13 +91,13 @@ fn main() -> Result<()> {
     // ------------------------------------------------------------------
     // Phase 3: Build dependency graph
     // ------------------------------------------------------------------
-    let graph = graph::build(&root, file_infos, &args.entry)
+    let dep_graph = graph::build(root, file_infos, &cfg)
         .context("Failed to build dependency graph")?;
 
     // ------------------------------------------------------------------
     // Phase 4: Analyze
     // ------------------------------------------------------------------
-    let result = analyzer::analyze(&graph, &root);
+    let result = analyzer::analyze(&dep_graph, &cfg);
 
     // ------------------------------------------------------------------
     // Phase 5: Output
@@ -85,17 +109,25 @@ fn main() -> Result<()> {
     }
 
     if args.graph {
-        output::write_dot(&graph, &root).context("Failed to write dependency graph")?;
+        output::write_dot(&dep_graph, root).context("Failed to write dependency graph")?;
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 6: Safe delete (--fix)
+    // ------------------------------------------------------------------
+    if args.fix {
+        fix::apply(root, &result, args.min_confidence)
+            .context("Safe-delete operation failed")?;
     }
 
     Ok(())
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Progress indicator helpers (also used by watch.rs)
 // ---------------------------------------------------------------------------
 
-fn spinner(message: &str) -> ProgressBar {
+pub fn spinner(message: &str) -> ProgressBar {
     let pb = ProgressBar::new_spinner();
     pb.set_style(
         ProgressStyle::with_template("{spinner:.cyan} {msg}")
@@ -107,7 +139,7 @@ fn spinner(message: &str) -> ProgressBar {
     pb
 }
 
-fn progress_bar(len: u64, template: &str) -> ProgressBar {
+pub fn progress_bar(len: u64, template: &str) -> ProgressBar {
     let pb = ProgressBar::new(len);
     pb.set_style(
         ProgressStyle::with_template(&format!("{{spinner:.cyan}} {template}"))

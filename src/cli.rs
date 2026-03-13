@@ -41,6 +41,10 @@ pub struct CliArgs {
     #[arg(long, short)]
     pub graph: bool,
 
+    /// Watch for file changes and re-run the analysis automatically.
+    #[arg(long, short)]
+    pub watch: bool,
+
     /// Only show results at or above this confidence level.
     #[arg(long, short = 'c', value_name = "LEVEL", default_value = "low")]
     pub min_confidence: ConfidenceFilter,

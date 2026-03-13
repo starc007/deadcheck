@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use petgraph::graph::DiGraph;
 
+use crate::config::ProjectConfig;
 use crate::resolver;
 use crate::types::{FileId, FileInfo, ImportKind, Resolution};
 
@@ -66,9 +67,8 @@ pub enum EdgeKind {
 /// * `root` — absolute project root (used for relative path display and
 ///   entry point heuristics).
 /// * `files` — all parsed [`FileInfo`] structs.
-/// * `extra_entries` — paths supplied via `--entry`. These are added on top
-///   of the auto-detected entry points.
-pub fn build(root: &Path, files: Vec<FileInfo>, extra_entries: &[PathBuf]) -> Result<DependencyGraph> {
+/// * `cfg` — project configuration (path aliases, extra entry points, framework).
+pub fn build(root: &Path, files: Vec<FileInfo>, cfg: &ProjectConfig) -> Result<DependencyGraph> {
     let mut graph: DiGraph<FileId, EdgeKind> = DiGraph::new();
     let mut file_map: HashMap<PathBuf, FileId> = HashMap::new();
 
@@ -92,9 +92,6 @@ pub fn build(root: &Path, files: Vec<FileInfo>, extra_entries: &[PathBuf]) -> Re
     // ------------------------------------------------------------------
     let mut external_packages: Vec<String> = Vec::new();
 
-    // No tsconfig alias support in Phase 1 — pass an empty slice.
-    let path_aliases: Vec<(String, Vec<PathBuf>)> = vec![];
-
     for file in &indexed_files {
         let Some(&importer_id) = file_map.get(&file.path) else {
             continue;
@@ -107,7 +104,7 @@ pub fn build(root: &Path, files: Vec<FileInfo>, extra_entries: &[PathBuf]) -> Re
                 ImportKind::ReExport => EdgeKind::ReExport,
             };
 
-            match resolver::resolve(&import.specifier, &file.path, &path_aliases) {
+            match resolver::resolve(&import.specifier, &file.path, &cfg.path_aliases) {
                 Resolution::File(resolved_path) => {
                     if let Some(&importee_id) = file_map.get(&resolved_path) {
                         graph.add_edge(importer_id, importee_id, edge_kind);

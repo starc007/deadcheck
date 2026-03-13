@@ -47,7 +47,7 @@ mod main_impl {
         if args.json {
             output::print_json(&result)?;
         } else {
-            output::print_terminal(&result, args.min_confidence);
+            output::print_terminal(&result, args.min_confidence, args.all);
         }
 
         if args.graph {

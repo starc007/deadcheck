@@ -214,4 +214,4 @@ Contributions are welcome! Please:
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+DO WHATEVER YOU WANT WITH THIS

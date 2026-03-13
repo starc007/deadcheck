@@ -67,6 +67,13 @@ pub struct CliArgs {
     /// Path to a `deadcheck.config.json` configuration file.
     #[arg(long, value_name = "FILE")]
     pub config: Option<PathBuf>,
+
+    /// Show all results without truncating long lists.
+    ///
+    /// By default, each section is capped at 20 entries to keep output
+    /// readable. Use this flag to see every result.
+    #[arg(long, short = 'A')]
+    pub all: bool,
 }
 
 /// Minimum confidence level to include in the report.

@@ -3,6 +3,8 @@
 //! Supports three output modes:
 //!
 //! 1. **Terminal** — human-readable, colour-coded output grouped by confidence.
+//!    Long lists are truncated to [`MAX_SHOWN`] entries by default; pass
+//!    `show_all = true` (via `--all`) to disable truncation.
 //! 2. **JSON** — machine-readable via `--json`, serialised with `serde_json`.
 //! 3. **DOT** — Graphviz DOT format for the dependency graph via `--graph`.
 
@@ -17,15 +19,19 @@ use crate::cli::ConfidenceFilter;
 use crate::graph::DependencyGraph;
 use crate::types::{AnalysisResult, Confidence, DeadFile};
 
+/// Maximum number of entries shown per section before truncating.
+const MAX_SHOWN: usize = 20;
+
 // ---------------------------------------------------------------------------
 // Terminal output
 // ---------------------------------------------------------------------------
 
 /// Print a human-readable report to stdout.
-pub fn print_terminal(result: &AnalysisResult, min_confidence: ConfidenceFilter) {
+///
+/// The summary line is printed **last** so it is always visible at the bottom
+/// of the terminal after the command finishes, even on large projects.
+pub fn print_terminal(result: &AnalysisResult, min_confidence: ConfidenceFilter, show_all: bool) {
     let min = filter_to_confidence(min_confidence);
-
-    print_summary(result);
 
     let dead: Vec<&DeadFile> = result
         .dead_files
@@ -33,19 +39,23 @@ pub fn print_terminal(result: &AnalysisResult, min_confidence: ConfidenceFilter)
         .filter(|f| f.confidence >= min)
         .collect();
 
-    if dead.is_empty() && result.unused_exports.is_empty() && result.unused_dependencies.is_empty()
-    {
-        println!("\n{}", "No dead code found.".green().bold());
+    let nothing =
+        dead.is_empty() && result.unused_exports.is_empty() && result.unused_dependencies.is_empty();
+
+    if nothing {
+        print_summary(result);
+        println!("\n{}", "  No dead code found — everything looks reachable!".green().bold());
+        println!();
         return;
     }
 
     // --- Dead files ---------------------------------------------------------
     if !dead.is_empty() {
-        println!("\n{}", "Dead Files".bold().underline());
+        print_section_header("Dead Files", dead.len());
+
+        let mut shown: usize = 0;
 
         for group_confidence in [Confidence::High, Confidence::Medium, Confidence::Low] {
-            // Skip groups below the minimum threshold.
-            // Confidence ordering: Low < Medium < High.
             if group_confidence < min {
                 continue;
             }
@@ -59,91 +69,149 @@ pub fn print_terminal(result: &AnalysisResult, min_confidence: ConfidenceFilter)
                 continue;
             }
 
-            println!("\n  {}", format_confidence_label(group_confidence));
+            println!("  {}", confidence_badge(group_confidence));
 
-            for file in group {
-                println!("  {} {}", bullet(), file.path.dimmed());
+            for file in &group {
+                if !show_all && shown >= MAX_SHOWN {
+                    break;
+                }
+                println!("    {} {}", "›".dimmed(), file.path.dimmed());
+                shown += 1;
             }
+        }
+
+        let total = dead.len();
+        if !show_all && shown < total {
+            println!(
+                "\n    {} {} more  (run with {} to see all)",
+                "…".dimmed(),
+                (total - shown).to_string().yellow(),
+                "--all".cyan()
+            );
         }
     }
 
     // --- Unused exports ------------------------------------------------------
     if !result.unused_exports.is_empty() {
-        println!("\n{}", "Unused Exports".bold().underline());
+        print_section_header("Unused Exports", result.unused_exports.len());
 
-        // Group by file for readability.
         let mut current_file = "";
+        let mut shown: usize = 0;
+
         for export in &result.unused_exports {
+            if !show_all && shown >= MAX_SHOWN {
+                break;
+            }
             if export.file_path != current_file {
-                println!("\n  {}", export.file_path.dimmed());
+                println!("  {} {}", "›".dimmed(), export.file_path.dimmed());
                 current_file = &export.file_path;
             }
-            println!("    {} {}", bullet(), export.symbol_name.yellow());
+            println!("      {} {}", "·".dimmed(), export.symbol_name.yellow());
+            shown += 1;
+        }
+
+        let total = result.unused_exports.len();
+        if !show_all && shown < total {
+            println!(
+                "\n    {} {} more  (run with {} to see all)",
+                "…".dimmed(),
+                (total - shown).to_string().yellow(),
+                "--all".cyan()
+            );
         }
     }
 
     // --- Unused npm dependencies --------------------------------------------
     if !result.unused_dependencies.is_empty() {
-        println!("\n{}", "Unused npm Dependencies".bold().underline());
+        print_section_header("Unused Dependencies", result.unused_dependencies.len());
+
+        for dep in &result.unused_dependencies {
+            println!("    {} {}", "·".dimmed(), dep.yellow());
+        }
+    }
+
+    // Summary is printed LAST so it's always visible in the terminal.
+    print_summary(result);
+
+    // Hint: suggest --fix if there are dead files.
+    if !dead.is_empty() {
         println!(
             "  {}",
-            "(not imported in any source file)".italic().dimmed()
+            "Run with --fix to safely move dead files to .deadcode/".dimmed()
         );
-        for dep in &result.unused_dependencies {
-            println!("  {} {}", bullet(), dep.yellow());
-        }
     }
 
     println!();
 }
 
-/// Print the summary line at the top of the report.
-fn print_summary(result: &AnalysisResult) {
-    let dead_count = result.dead_files.len();
-    let export_count = result.unused_exports.len();
-    let dep_count = result.unused_dependencies.len();
+// ---------------------------------------------------------------------------
+// Layout helpers
+// ---------------------------------------------------------------------------
 
-    println!("\n{}", "Dead Code Analysis".bold());
+/// Print a section header with a separator line and item count.
+fn print_section_header(title: &str, count: usize) {
+    // e.g.  ── Dead Files ─────────────────  18 found
+    let label = format!(" {} ", title).bold().to_string();
+    let count_str = format!("  {} found", count);
+    let separator = "─".repeat(46_usize.saturating_sub(title.len()));
+
     println!(
-        "  Scanned {} files  •  {} dead files  •  {} unused exports  •  {} unused dependencies",
-        result.total_files.to_string().cyan(),
-        format_count(dead_count, "red"),
-        format_count(export_count, "yellow"),
-        format_count(dep_count, "yellow"),
+        "\n{}{}{}",
+        format!("── {label}").dimmed(),
+        separator.dimmed(),
+        if count > 0 {
+            count_str.yellow().to_string()
+        } else {
+            count_str.green().to_string()
+        }
     );
 }
 
-fn format_count(n: usize, colour: &str) -> String {
-    let s = n.to_string();
-    match colour {
-        "red" => {
-            if n > 0 {
-                s.red().to_string()
-            } else {
-                s.green().to_string()
-            }
-        }
-        "yellow" => {
-            if n > 0 {
-                s.yellow().to_string()
-            } else {
-                s.green().to_string()
-            }
-        }
-        _ => s,
+/// Print the summary block (always shown at the bottom).
+fn print_summary(result: &AnalysisResult) {
+    let dead = result.dead_files.len();
+    let exports = result.unused_exports.len();
+    let deps = result.unused_dependencies.len();
+
+    let line = "─".repeat(56);
+    println!("\n{}", line.dimmed());
+    println!(
+        "  {}  {}  {}  {}",
+        format!("{} files scanned", result.total_files).bold(),
+        format_count_label(dead, "dead file"),
+        format_count_label(exports, "unused export"),
+        format_count_label(deps, "unused dep"),
+    );
+    println!("{}", line.dimmed());
+}
+
+fn format_count_label(n: usize, label: &str) -> String {
+    let plural = if n == 1 { label.to_string() } else { format!("{label}s") };
+    if n > 0 {
+        format!("{} {}", n.to_string().red().bold(), plural.dimmed())
+    } else {
+        format!("{} {}", "0".green(), plural.dimmed())
     }
 }
 
-fn format_confidence_label(c: Confidence) -> String {
+fn confidence_badge(c: Confidence) -> String {
     match c {
-        Confidence::High => "HIGH confidence".red().bold().to_string(),
-        Confidence::Medium => "MEDIUM confidence".yellow().bold().to_string(),
-        Confidence::Low => "LOW confidence".white().bold().to_string(),
+        Confidence::High => format!(
+            "{}  {}",
+            "HIGH".red().bold(),
+            "— likely safe to remove".dimmed()
+        ),
+        Confidence::Medium => format!(
+            "{}  {}",
+            "MEDIUM".yellow().bold(),
+            "— review before removing".dimmed()
+        ),
+        Confidence::Low => format!(
+            "{}  {}",
+            "LOW".white().bold(),
+            "— may be dynamically referenced".dimmed()
+        ),
     }
-}
-
-fn bullet() -> colored::ColoredString {
-    "•".dimmed()
 }
 
 // ---------------------------------------------------------------------------

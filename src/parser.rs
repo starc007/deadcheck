@@ -111,6 +111,7 @@ fn parse_file(root: &Path, path: &Path) -> Result<FileInfo> {
         imports: visitor.imports,
         exports: visitor.exports,
         dynamic_imports: visitor.dynamic_imports,
+        internal_type_refs: visitor.internal_type_refs,
     })
 }
 
@@ -124,6 +125,8 @@ struct ImportExportVisitor {
     imports: Vec<ImportEdge>,
     exports: Vec<ExportedSymbol>,
     dynamic_imports: Vec<String>,
+    /// TypeScript type names referenced in type positions (e.g. `Model<IMessage>`).
+    internal_type_refs: Vec<String>,
 }
 
 impl Visit for ImportExportVisitor {
@@ -285,6 +288,27 @@ impl Visit for ImportExportVisitor {
         }
 
         // Continue visiting children (the call may be nested).
+        node.visit_children_with(self);
+    }
+
+    // ------------------------------------------------------------------
+    // TypeScript type references: `Foo<Bar>`, `x: Bar`, `interface X extends Bar`
+    // ------------------------------------------------------------------
+
+    fn visit_ts_type_ref(&mut self, node: &TsTypeRef) {
+        // Collect the root identifier of any type reference.
+        if let TsEntityName::Ident(id) = &node.type_name {
+            self.internal_type_refs.push(id.sym.to_string());
+        }
+        // Visit children so nested generics (e.g. `Model<IMessage>`) are captured.
+        node.visit_children_with(self);
+    }
+
+    fn visit_ts_expr_with_type_args(&mut self, node: &TsExprWithTypeArgs) {
+        // `class Foo extends Bar<Baz>` — captures `Bar` and its type args.
+        if let Expr::Ident(id) = node.expr.as_ref() {
+            self.internal_type_refs.push(id.sym.to_string());
+        }
         node.visit_children_with(self);
     }
 }

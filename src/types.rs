@@ -44,6 +44,13 @@ pub struct FileInfo {
     /// penalties to nearby files. Used in Phase 4.
     #[allow(dead_code)]
     pub dynamic_imports: Vec<String>,
+
+    /// TypeScript type names referenced within this file's own body.
+    ///
+    /// Populated from `TsTypeRef` and `TsExprWithTypeArgs` nodes. Used to
+    /// suppress false-positive "unused export" reports for symbols that are
+    /// consumed internally (e.g. `mongoose.model<IMessage>(...)`).
+    pub internal_type_refs: Vec<String>,
 }
 
 /// A single import relationship from one file to a specifier.

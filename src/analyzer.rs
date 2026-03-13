@@ -162,7 +162,13 @@ fn collect_unused_exports(
                 continue;
             }
 
-            let is_used = is_symbol_imported(graph, file_id, &export.name);
+            // If the symbol is referenced as a type within the same file
+            // (e.g. `mongoose.model<IMessage>(...)`), treat it as internally
+            // used. This avoids flagging TypeScript interfaces that are
+            // consumed via generic type parameters rather than explicit imports.
+            let used_internally = file.internal_type_refs.iter().any(|r| r == &export.name);
+
+            let is_used = used_internally || is_symbol_imported(graph, file_id, &export.name);
 
             if !is_used {
                 unused.push(UnusedExport {

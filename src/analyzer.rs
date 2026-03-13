@@ -33,7 +33,7 @@ pub fn analyze(graph: &DependencyGraph, cfg: &ProjectConfig) -> AnalysisResult {
     let reachable_count = reachable.len();
 
     let dead_files = collect_dead_files(graph, &reachable);
-    let unused_exports = collect_unused_exports(graph, &reachable, &cfg.path_aliases);
+    let unused_exports = collect_unused_exports(graph, &reachable);
     let unused_dependencies = collect_unused_dependencies(graph, cfg);
 
     AnalysisResult {
@@ -104,7 +104,7 @@ fn collect_dead_files(graph: &DependencyGraph, reachable: &HashSet<FileId>) -> V
             let has_dynamic_import_incoming = graph
                 .graph
                 .edges_directed(id, Direction::Incoming)
-                .any(|e| *e.weight() == crate::graph::EdgeKind::Dynamic);
+                .any(|e| e.weight().kind == crate::graph::EdgeKind::Dynamic);
 
             let (confidence, signals) =
                 confidence::score(file, graph, incoming_count, has_dynamic_import_incoming);
@@ -135,7 +135,6 @@ fn collect_dead_files(graph: &DependencyGraph, reachable: &HashSet<FileId>) -> V
 fn collect_unused_exports(
     graph: &DependencyGraph,
     reachable: &HashSet<FileId>,
-    path_aliases: &[(String, Vec<std::path::PathBuf>)],
 ) -> Vec<UnusedExport> {
     let mut unused: Vec<UnusedExport> = Vec::new();
 
@@ -163,7 +162,7 @@ fn collect_unused_exports(
                 continue;
             }
 
-            let is_used = is_symbol_imported(graph, file_id, &export.name, path_aliases);
+            let is_used = is_symbol_imported(graph, file_id, &export.name);
 
             if !is_used {
                 unused.push(UnusedExport {
@@ -186,48 +185,21 @@ fn collect_unused_exports(
 }
 
 /// Returns `true` if any file imports `symbol_name` from `target_file_id`.
-fn is_symbol_imported(
-    graph: &DependencyGraph,
-    target_file_id: FileId,
-    symbol_name: &str,
-    path_aliases: &[(String, Vec<std::path::PathBuf>)],
-) -> bool {
-    // Walk all incoming edges to find files that import from `target_file_id`.
-    for importer_id in graph
+///
+/// We walk the incoming edges of `target_file_id` directly. Because
+/// `imported_names` was recorded on the edge at graph-construction time
+/// (when we already had the correct resolved path), this avoids re-resolving
+/// specifiers here — which was error-prone due to path canonicalization
+/// differences between the scanner and the resolver.
+fn is_symbol_imported(graph: &DependencyGraph, target_file_id: FileId, symbol_name: &str) -> bool {
+    for edge in graph
         .graph
-        .neighbors_directed(target_file_id, Direction::Incoming)
+        .edges_directed(target_file_id, Direction::Incoming)
     {
-        let Some(importer_file) = graph.files.get(importer_id.index()) else {
-            continue;
-        };
-
-        for import in &importer_file.imports {
-            // Resolve the import specifier to see if it points at our target.
-            // We re-use the graph's stored external_packages instead of re-running
-            // the resolver with aliases; edges in the graph already reflect the
-            // correct alias resolution done during graph construction.
-            let resolved = crate::resolver::resolve(
-                &import.specifier,
-                &importer_file.path,
-                path_aliases,
-            );
-
-            let points_at_target = match resolved {
-                crate::types::Resolution::File(p) => {
-                    graph.file_map.get(&p).copied() == Some(target_file_id)
-                }
-                _ => false,
-            };
-
-            if !points_at_target {
-                continue;
-            }
-
-            // The import points at our file. Check if it imports our symbol.
-            for name in &import.imported_names {
-                if name == "*" || name == symbol_name {
-                    return true;
-                }
+        let data = edge.weight();
+        for name in &data.imported_names {
+            if name == "*" || name == symbol_name {
+                return true;
             }
         }
     }

@@ -25,9 +25,9 @@ use crate::types::{FileId, FileInfo, ImportKind, Resolution};
 
 /// The fully-constructed dependency graph.
 pub struct DependencyGraph {
-    /// Directed graph. Each node is a [`FileId`]; each edge carries an
-    /// [`EdgeKind`] indicating how the import was written.
-    pub graph: DiGraph<FileId, EdgeKind>,
+    /// Directed graph. Each node is a [`FileId`]; each edge carries
+    /// [`ImportEdgeData`] including which symbols were imported.
+    pub graph: DiGraph<FileId, ImportEdgeData>,
 
     /// Maps an absolute file path to its node index.
     pub file_map: HashMap<PathBuf, FileId>,
@@ -56,6 +56,25 @@ pub enum EdgeKind {
     ReExport,
 }
 
+/// Data stored on each directed edge in the dependency graph.
+///
+/// Carrying `imported_names` on the edge lets the analyzer check which
+/// specific symbols were imported without re-resolving specifiers (which
+/// is error-prone due to path canonicalization differences).
+#[derive(Debug, Clone)]
+pub struct ImportEdgeData {
+    /// How the import was written in source.
+    pub kind: EdgeKind,
+
+    /// The symbols pulled in by this import statement.
+    ///
+    /// - `"default"` — `import Foo from "..."`
+    /// - `"*"` — `import * as Foo from "..."` (all exports used)
+    /// - anything else — `import { foo } from "..."`
+    /// - empty Vec — dynamic `import("...")` or bare `require("...")`
+    pub imported_names: Vec<String>,
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -69,7 +88,7 @@ pub enum EdgeKind {
 /// * `files` — all parsed [`FileInfo`] structs.
 /// * `cfg` — project configuration (path aliases, extra entry points, framework).
 pub fn build(root: &Path, files: Vec<FileInfo>, cfg: &ProjectConfig) -> Result<DependencyGraph> {
-    let mut graph: DiGraph<FileId, EdgeKind> = DiGraph::new();
+    let mut graph: DiGraph<FileId, ImportEdgeData> = DiGraph::new();
     let mut file_map: HashMap<PathBuf, FileId> = HashMap::new();
 
     // ------------------------------------------------------------------
@@ -107,7 +126,14 @@ pub fn build(root: &Path, files: Vec<FileInfo>, cfg: &ProjectConfig) -> Result<D
             match resolver::resolve(&import.specifier, &file.path, &cfg.path_aliases) {
                 Resolution::File(resolved_path) => {
                     if let Some(&importee_id) = file_map.get(&resolved_path) {
-                        graph.add_edge(importer_id, importee_id, edge_kind);
+                        graph.add_edge(
+                            importer_id,
+                            importee_id,
+                            ImportEdgeData {
+                                kind: edge_kind,
+                                imported_names: import.imported_names.clone(),
+                            },
+                        );
                     }
                     // If the resolved path isn't in file_map it's outside the
                     // project root (e.g. a symlinked dependency) — skip it.

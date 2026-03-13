@@ -11,11 +11,11 @@
 //!   are never referenced in any import statement.
 
 use std::collections::{HashSet, VecDeque};
-use std::path::Path;
 
 use petgraph::Direction;
 
 use crate::confidence;
+use crate::config::ProjectConfig;
 use crate::graph::DependencyGraph;
 use crate::types::{AnalysisResult, DeadFile, ExportKind, FileId, UnusedExport};
 
@@ -27,18 +27,19 @@ use crate::types::{AnalysisResult, DeadFile, ExportKind, FileId, UnusedExport};
 ///
 /// Returns an [`AnalysisResult`] containing dead files, unused exports, and
 /// unused npm dependencies.
-pub fn analyze(graph: &DependencyGraph, _root: &Path) -> AnalysisResult {
+pub fn analyze(graph: &DependencyGraph, cfg: &ProjectConfig) -> AnalysisResult {
     let reachable = compute_reachable(graph);
     let total_files = graph.files.len();
     let reachable_count = reachable.len();
 
     let dead_files = collect_dead_files(graph, &reachable);
     let unused_exports = collect_unused_exports(graph, &reachable);
+    let unused_dependencies = collect_unused_dependencies(graph, cfg);
 
     AnalysisResult {
         dead_files,
         unused_exports,
-        unused_dependencies: vec![], // Phase 2: requires package.json parsing
+        unused_dependencies,
         reachable_count,
         total_files,
     }
@@ -197,11 +198,13 @@ fn is_symbol_imported(
 
         for import in &importer_file.imports {
             // Resolve the import specifier to see if it points at our target.
-            // (We do a quick file_map lookup instead of re-running the resolver.)
+            // We re-use the graph's stored external_packages instead of re-running
+            // the resolver with aliases; edges in the graph already reflect the
+            // correct alias resolution done during graph construction.
             let resolved = crate::resolver::resolve(
                 &import.specifier,
                 &importer_file.path,
-                &[], // no aliases in Phase 1
+                &[], // alias resolution already applied during graph build
             );
 
             let points_at_target = match resolved {
@@ -225,4 +228,37 @@ fn is_symbol_imported(
     }
 
     false
+}
+
+// ---------------------------------------------------------------------------
+// Unused npm dependency detection
+// ---------------------------------------------------------------------------
+
+/// Find npm packages listed in `package.json` that are never imported.
+///
+/// Compares the full set of `dependencies` + `devDependencies` against the
+/// set of external specifiers actually seen during parsing. Packages in
+/// `cfg.ignore_dependencies` are always skipped.
+fn collect_unused_dependencies(graph: &DependencyGraph, cfg: &ProjectConfig) -> Vec<String> {
+    let checked = cfg.all_checked_dependencies();
+
+    if checked.is_empty() {
+        // No package.json or no dependencies — nothing to check.
+        return vec![];
+    }
+
+    // Collect all external package names seen in any import across the project.
+    let seen: HashSet<&str> = graph
+        .external_packages
+        .iter()
+        .map(String::as_str)
+        .collect();
+
+    let mut unused: Vec<String> = checked
+        .into_iter()
+        .filter(|dep| !seen.contains(dep.as_str()))
+        .collect();
+
+    unused.sort_unstable();
+    unused
 }

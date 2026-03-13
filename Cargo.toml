@@ -8,6 +8,10 @@ repository = "https://github.com/YOUR_USERNAME/deadcheck"
 keywords = ["dead-code", "javascript", "typescript", "cli", "static-analysis"]
 categories = ["command-line-utilities", "development-tools"]
 
+[lib]
+name = "deadcheck"
+path = "src/lib.rs"
+
 [[bin]]
 name = "deadcheck"
 path = "src/main.rs"

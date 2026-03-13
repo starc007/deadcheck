@@ -131,8 +131,8 @@ pub fn build(root: &Path, files: Vec<FileInfo>, cfg: &ProjectConfig) -> Result<D
     // ------------------------------------------------------------------
     let mut entry_points: Vec<FileId> = detect_entry_points(root, &indexed_files, &file_map);
 
-    // Add any paths supplied via --entry.
-    for extra in extra_entries {
+    // Add any paths from config / --entry CLI flags.
+    for extra in &cfg.extra_entry_points {
         let canonical = extra
             .canonicalize()
             .unwrap_or_else(|_| extra.clone());

@@ -13,7 +13,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::Deserialize;
 
 // ---------------------------------------------------------------------------

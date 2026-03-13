@@ -46,6 +46,18 @@ Unused npm Dependencies
 
 ## Installation
 
+### curl (macOS and Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/starc007/deadcheck/main/install.sh | bash
+```
+
+To install a specific version:
+
+```bash
+DEADCHECK_VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/starc007/deadcheck/main/install.sh | bash
+```
+
 ### From source (requires Rust 1.88+)
 
 ```bash

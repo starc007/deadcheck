@@ -72,10 +72,16 @@ pub fn resolve(
 
 /// Try to resolve `path` to an existing file, trying extensions and index
 /// files if needed.
+///
+/// The returned path is **canonicalized** (all `..` and symlinks resolved) so
+/// it matches the absolute keys stored in the dependency graph's `file_map`.
+/// Without this, a specifier like `"../controllers/authController"` would
+/// resolve to a path containing `..` that looks different from the scanner's
+/// canonical entry for the same file, causing the file to appear unreachable.
 fn resolve_path(path: PathBuf) -> Resolution {
     // 1. Exact path exists as a file.
     if path.is_file() {
-        return Resolution::File(path);
+        return Resolution::File(canonicalize_or_keep(path));
     }
 
     // 2. Extension-less specifier — try adding known extensions.
@@ -83,7 +89,7 @@ fn resolve_path(path: PathBuf) -> Resolution {
         for ext in EXTENSIONS {
             let candidate = path.with_extension(ext);
             if candidate.is_file() {
-                return Resolution::File(candidate);
+                return Resolution::File(canonicalize_or_keep(candidate));
             }
         }
     }
@@ -93,12 +99,20 @@ fn resolve_path(path: PathBuf) -> Resolution {
         for index in INDEX_FILES {
             let candidate = path.join(index);
             if candidate.is_file() {
-                return Resolution::File(candidate);
+                return Resolution::File(canonicalize_or_keep(candidate));
             }
         }
     }
 
     Resolution::Unresolvable(path.display().to_string())
+}
+
+/// Canonicalize `path`, falling back to the original if the OS call fails.
+///
+/// Canonicalization resolves `..` components and symlinks so the returned path
+/// matches the absolute paths produced by the directory scanner.
+fn canonicalize_or_keep(path: PathBuf) -> PathBuf {
+    path.canonicalize().unwrap_or(path)
 }
 
 /// Returns `true` if the path already has a JS/TS extension.

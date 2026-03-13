@@ -254,9 +254,31 @@ fn is_nextjs_app_route(relative_path: &Path, file_name: &str) -> bool {
         .and_then(|s| s.to_str())
         .unwrap_or("");
 
+    // Next.js App Router file-system conventions.
+    // See: https://nextjs.org/docs/app/api-reference/file-conventions
     matches!(
         stem,
-        "page" | "layout" | "route" | "loading" | "error" | "not-found" | "middleware" | "template"
+        // Core route files
+        "page"
+            | "layout"
+            | "route"
+            | "loading"
+            | "error"
+            | "not-found"
+            | "template"
+            | "default"
+            | "global-error"
+            // Metadata files (served directly by Next.js runtime)
+            | "manifest"
+            | "robots"
+            | "sitemap"
+            // Image route handlers
+            | "opengraph-image"
+            | "twitter-image"
+            | "icon"
+            | "apple-icon"
+            // Observability / instrumentation (Next.js 14+)
+            | "instrumentation"
     ) || file_name == "middleware.ts"
         || file_name == "middleware.js"
 }
@@ -305,6 +327,7 @@ fn is_root_config(root: &Path, relative_path: &Path, file_name: &str) -> bool {
 
     matches!(
         file_name,
+        // Framework configs
         "vite.config.ts"
             | "vite.config.js"
             | "next.config.js"
@@ -315,5 +338,42 @@ fn is_root_config(root: &Path, relative_path: &Path, file_name: &str) -> bool {
             | "svelte.config.js"
             | "nuxt.config.ts"
             | "remix.config.js"
+            // Linter / formatter
+            | "eslint.config.js"
+            | "eslint.config.mjs"
+            | "eslint.config.cjs"
+            | "eslint.config.ts"
+            | "prettier.config.js"
+            | "prettier.config.mjs"
+            | "prettier.config.ts"
+            // CSS tooling
+            | "postcss.config.js"
+            | "postcss.config.mjs"
+            | "postcss.config.cjs"
+            | "tailwind.config.js"
+            | "tailwind.config.ts"
+            // Test runners
+            | "jest.config.js"
+            | "jest.config.ts"
+            | "jest.config.mjs"
+            | "vitest.config.js"
+            | "vitest.config.ts"
+            | "vitest.config.mts"
+            | "playwright.config.js"
+            | "playwright.config.ts"
+            // Bundlers
+            | "webpack.config.js"
+            | "webpack.config.ts"
+            | "rollup.config.js"
+            | "rollup.config.mjs"
+            | "rollup.config.ts"
+            | "tsup.config.ts"
+            | "tsup.config.js"
+            | "esbuild.config.js"
+            | "esbuild.config.mjs"
+            // Babel / transpilation
+            | "babel.config.js"
+            | "babel.config.mjs"
+            | "babel.config.ts"
     )
 }

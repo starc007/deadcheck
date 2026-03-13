@@ -71,9 +71,14 @@ fn parse_file(root: &Path, path: &Path) -> Result<FileInfo> {
     let source_file =
         source_map.new_source_file(Lrc::new(FileName::Real(path.to_path_buf())), source.clone());
 
-    // Use TypeScript syntax with JSX enabled — this handles .ts, .tsx, .js, .jsx.
+    // Enable JSX/TSX only for files that actually use it.
+    // Parsing plain `.ts` files with `tsx: true` causes false parse errors
+    // when the source contains angle brackets in generics that look like JSX.
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let tsx = matches!(ext, "tsx" | "jsx");
+
     let syntax = Syntax::Typescript(TsSyntax {
-        tsx: true,
+        tsx,
         decorators: true,
         ..Default::default()
     });
@@ -247,19 +252,72 @@ impl Visit for ImportExportVisitor {
     fn visit_call_expr(&mut self, node: &CallExpr) {
         if let Callee::Import(_) = &node.callee {
             if let Some(first_arg) = node.args.first() {
-                // Only record statically-known string specifiers.
                 if let Expr::Lit(Lit::Str(s)) = first_arg.expr.as_ref() {
-                    self.dynamic_imports
-                        .push(s.value.to_string_lossy().into_owned());
+                    let specifier = s.value.to_string_lossy().into_owned();
+
+                    // Add to dynamic_imports for reporting.
+                    self.dynamic_imports.push(specifier.clone());
+
+                    // Also add as an import edge so the graph can resolve the
+                    // target (local file or npm package). Without this, dynamic
+                    // imports would never create graph edges, causing npm
+                    // packages only used via `await import(...)` to be
+                    // incorrectly flagged as unused dependencies.
+                    self.imports.push(ImportEdge {
+                        specifier,
+                        kind: ImportKind::Dynamic,
+                        imported_names: vec![],
+                    });
                 } else {
-                    // Template literal or variable — not resolvable statically.
+                    // Template literal or variable — not statically resolvable.
                     self.dynamic_imports.push("<dynamic>".to_string());
                 }
             }
         }
 
+        // CommonJS: `require("specifier")`
+        if let Some(specifier) = Self::try_extract_require(node) {
+            self.imports.push(ImportEdge {
+                specifier,
+                kind: ImportKind::Static,
+                imported_names: vec![],
+            });
+        }
+
         // Continue visiting children (the call may be nested).
         node.visit_children_with(self);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CommonJS require() detection
+// ---------------------------------------------------------------------------
+
+impl ImportExportVisitor {
+    /// Extract the specifier from `require("...")` if the callee is the bare
+    /// identifier `require` and the first argument is a string literal.
+    fn try_extract_require(node: &CallExpr) -> Option<String> {
+        // Callee must be the bare identifier `require`.
+        let ident = match &node.callee {
+            Callee::Expr(expr) => match expr.as_ref() {
+                Expr::Ident(id) => id,
+                _ => return None,
+            },
+            _ => return None,
+        };
+
+        if ident.sym.as_ref() != "require" {
+            return None;
+        }
+
+        // First argument must be a string literal.
+        node.args.first().and_then(|arg| {
+            if let Expr::Lit(Lit::Str(s)) = arg.expr.as_ref() {
+                Some(s.value.to_string_lossy().into_owned())
+            } else {
+                None
+            }
+        })
     }
 }
 

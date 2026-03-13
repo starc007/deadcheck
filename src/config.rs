@@ -57,10 +57,16 @@ impl ProjectConfig {
     /// `devDependencies` are included because many projects import dev packages
     /// in test files (e.g. `jest`, `@testing-library/react`). Users can opt out
     /// by adding them to `ignoreDependencies` in `deadcheck.config.json`.
+    ///
+    /// The following are always excluded, regardless of config:
+    /// - All `@types/*` packages — TypeScript type definitions are used by the
+    ///   compiler, never imported at runtime.
+    /// - Packages in [`Self::ignore_dependencies`].
     pub fn all_checked_dependencies(&self) -> HashSet<String> {
         self.dependencies
             .iter()
             .chain(self.dev_dependencies.iter())
+            .filter(|dep| !dep.starts_with("@types/"))
             .filter(|dep| !self.ignore_dependencies.contains(*dep))
             .cloned()
             .collect()
@@ -336,28 +342,66 @@ fn load_deadcheck_config(path: &Path, cfg: &mut ProjectConfig) {
 /// configured through config files, not through `import` statements.
 fn default_ignored_deps() -> HashSet<String> {
     [
+        // TypeScript / transpilation tooling
         "typescript",
-        "eslint",
-        "prettier",
-        "jest",
-        "vitest",
         "ts-node",
         "tsx",
         "ts-jest",
-        "@types/node",
-        "@types/react",
-        "@types/react-dom",
+        "ts-morph",
+        // Linters / formatters (configured via config files, not imported)
+        "eslint",
+        "prettier",
+        "stylelint",
+        // Test runners (imported in test files but never in production source)
+        "jest",
+        "vitest",
+        "@playwright/test",
+        "cypress",
+        "mocha",
+        "chai",
+        "sinon",
+        // CSS tooling — referenced in postcss/tailwind config, never imported
+        "tailwindcss",
+        "@tailwindcss/postcss",
+        "postcss",
+        "autoprefixer",
+        "sass",
+        "less",
+        "stylus",
+        // Bundler / build tools (run via CLI, not imported)
+        "webpack",
+        "rollup",
+        "esbuild",
+        "parcel",
+        "tsup",
+        "vite",
+        "@vitejs/plugin-react",
+        "@vitejs/plugin-vue",
+        // Next.js peer dependencies and CLI-only packages
+        "sharp",          // Next.js image optimisation peer dep
+        "react-is",       // React internal peer dep
+        "next-sitemap",   // Generates sitemap via script, not imported
+        "next-pwa",       // Config-only
+        // Monorepo / task runners
+        "turbo",
+        "nx",
+        "lerna",
+        // Git hooks / release tooling
         "husky",
         "lint-staged",
         "commitizen",
+        "commitlint",
+        "@commitlint/cli",
+        "@commitlint/config-conventional",
         "semantic-release",
+        // General dev utilities
         "rimraf",
         "concurrently",
         "cross-env",
         "dotenv-cli",
         "nodemon",
-        "turbo",
-        "nx",
+        "pm2",
+        "wait-on",
     ]
     .iter()
     .map(|s| s.to_string())

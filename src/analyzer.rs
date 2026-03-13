@@ -33,7 +33,7 @@ pub fn analyze(graph: &DependencyGraph, cfg: &ProjectConfig) -> AnalysisResult {
     let reachable_count = reachable.len();
 
     let dead_files = collect_dead_files(graph, &reachable);
-    let unused_exports = collect_unused_exports(graph, &reachable);
+    let unused_exports = collect_unused_exports(graph, &reachable, &cfg.path_aliases);
     let unused_dependencies = collect_unused_dependencies(graph, cfg);
 
     AnalysisResult {
@@ -135,6 +135,7 @@ fn collect_dead_files(graph: &DependencyGraph, reachable: &HashSet<FileId>) -> V
 fn collect_unused_exports(
     graph: &DependencyGraph,
     reachable: &HashSet<FileId>,
+    path_aliases: &[(String, Vec<std::path::PathBuf>)],
 ) -> Vec<UnusedExport> {
     let mut unused: Vec<UnusedExport> = Vec::new();
 
@@ -154,7 +155,15 @@ fn collect_unused_exports(
                 continue;
             }
 
-            let is_used = is_symbol_imported(graph, file_id, &export.name);
+            // Next.js App Router exports consumed directly by the framework
+            // (e.g. `generateMetadata`, `metadata`, `viewport`) are never
+            // imported by user code — skip them to avoid false positives.
+            let file_path_str = file.relative_path.to_string_lossy();
+            if is_nextjs_framework_export(&file_path_str, &export.name) {
+                continue;
+            }
+
+            let is_used = is_symbol_imported(graph, file_id, &export.name, path_aliases);
 
             if !is_used {
                 unused.push(UnusedExport {
@@ -177,7 +186,12 @@ fn collect_unused_exports(
 }
 
 /// Returns `true` if any file imports `symbol_name` from `target_file_id`.
-fn is_symbol_imported(graph: &DependencyGraph, target_file_id: FileId, symbol_name: &str) -> bool {
+fn is_symbol_imported(
+    graph: &DependencyGraph,
+    target_file_id: FileId,
+    symbol_name: &str,
+    path_aliases: &[(String, Vec<std::path::PathBuf>)],
+) -> bool {
     // Walk all incoming edges to find files that import from `target_file_id`.
     for importer_id in graph
         .graph
@@ -195,7 +209,7 @@ fn is_symbol_imported(graph: &DependencyGraph, target_file_id: FileId, symbol_na
             let resolved = crate::resolver::resolve(
                 &import.specifier,
                 &importer_file.path,
-                &[], // alias resolution already applied during graph build
+                path_aliases,
             );
 
             let points_at_target = match resolved {
@@ -219,6 +233,60 @@ fn is_symbol_imported(graph: &DependencyGraph, target_file_id: FileId, symbol_na
     }
 
     false
+}
+
+// ---------------------------------------------------------------------------
+// Unused npm dependency detection
+// ---------------------------------------------------------------------------
+
+/// Returns `true` if the symbol is a Next.js App Router export that is consumed
+/// directly by the Next.js runtime rather than imported by user code.
+///
+/// These exports must never be flagged as "unused" even when no other file
+/// imports them — Next.js reads them via its own internal file-system routing.
+fn is_nextjs_framework_export(file_relative_path: &str, symbol_name: &str) -> bool {
+    let path = file_relative_path.to_lowercase();
+
+    // Only applies inside the App Router `app/` directory.
+    if !path.starts_with("app/") && !path.contains("/app/") {
+        return false;
+    }
+
+    // Full list of Next.js App Router reserved export names.
+    // See: https://nextjs.org/docs/app/api-reference/file-conventions
+    matches!(
+        symbol_name,
+        // Page / layout component
+        "default"
+            // Static and dynamic metadata
+            | "metadata"
+            | "generateMetadata"
+            // Viewport (Next.js 14+)
+            | "viewport"
+            | "generateViewport"
+            // Static params for dynamic routes
+            | "generateStaticParams"
+            // Route segment config
+            | "dynamic"
+            | "dynamicParams"
+            | "revalidate"
+            | "fetchCache"
+            | "runtime"
+            | "preferredRegion"
+            | "maxDuration"
+            // Image route handlers
+            | "size"
+            | "contentType"
+            | "alt"
+            // HTTP method handlers (route.ts)
+            | "GET"
+            | "POST"
+            | "PUT"
+            | "PATCH"
+            | "DELETE"
+            | "HEAD"
+            | "OPTIONS"
+    )
 }
 
 // ---------------------------------------------------------------------------

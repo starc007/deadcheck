@@ -1,0 +1,53 @@
+[package]
+name = "deadcheck"
+version = "0.1.0"
+edition = "2021"
+description = "Fast dead code detector for JavaScript and TypeScript projects"
+license = "MIT"
+repository = "https://github.com/YOUR_USERNAME/deadcheck"
+keywords = ["dead-code", "javascript", "typescript", "cli", "static-analysis"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "deadcheck"
+path = "src/main.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive", "cargo"] }
+indicatif = "0.17"
+colored = "2"
+
+# Parsing (SWC)
+swc_ecma_parser = "35"
+swc_ecma_ast = "21"
+swc_ecma_visit = "21"
+swc_common = "19"
+
+# Graph
+petgraph = "0.6"
+
+# Filesystem
+ignore = "0.4"
+globset = "0.4"
+jwalk = "0.8"
+
+# Parallelism
+rayon = "1"
+dashmap = "5"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+
+# Path utilities
+path-clean = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
